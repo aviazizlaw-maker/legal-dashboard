@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מוקד מודיעין משפטי — יוסף ששי</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; } body { font-family: Arial, sans-serif; }</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback } = React;
+const API = "https://api.anthropic.com/v1/messages";
+const LBL = { title:"📋 מכרז", authority:"🏛 רשות", deadline:"📅 הגשה", source:"🔗 מקור", notes:"📝 הערות", ministry:"🏛 משרד", company:"🏢 גוף", amount:"💰 סכום", reason:"⚠️ עילה", date:"📅 תאריך", legalRelevance:"⚖️ רלוונטיות", topic:"📣 נושא", complaintsCount:"📊 תלונות", legalBasis:"⚖️ עילה", potentialClass:"👥 נפגעים", urgency:"🚨 דחיפות" };
+
+function mkSections() {
+  const t = new Date().toLocaleString("he-IL");
+  return [
+    { id:"tenders", emoji:"📋", title:"מכרזים — ייעוץ משפטי לרשויות מקומיות", subtitle:"7 ימים אחרונים", color:"#1a237e", bg:"#e8eaf6", border:"#3949ab", prompt:`חפש ברשת מכרזים חדשים לייעוץ משפטי לרשויות מקומיות בישראל (7 ימים אחרונים). חפש ב: mr.gov.il, namerz.moin.gov.il, govi.co.il, masham.org.il. החזר JSON בלבד: {"results":[{"title":"","authority":"","deadline":"","source":"","url":"","notes":""}],"summary":"","lastChecked":"${t}"}` },
+    { id:"sanctions", emoji:"⚖️", title:"עיצומים — משרדי ממשלה", subtitle:"24 שעות אחרונות", color:"#b71c1c", bg:"#ffebee", border:"#e53935", prompt:`חפש עיצומים כספיים ב-24 שעות האחרונות (רשות ניירות ערך, כלכלה, עבודה, תחרות, סביבה, בריאות). החזר JSON בלבד: {"results":[{"ministry":"","company":"","amount":"","reason":"","date":"","legalRelevance":""}],"summary":"","totalAmount":"","lastChecked":"${t}"}` },
+    { id:"classaction", emoji:"👥", title:"פוטנציאל תביעה ייצוגית", subtitle:"תלונות מרובות — אותה עילה", color:"#1b5e20", bg:"#e8f5e9", border:"#43a047", prompt:`מצא נושאים עם פוטנציאל לתביעה ייצוגית בישראל. חפש ב: consumers.org.il, TheMarker, גלובס, Ynet. החזר JSON בלבד: {"results":[{"topic":"","company":"","complaintsCount":"","legalBasis":"","potentialClass":"","source":"","urgency":"גבוהה/בינונית/נמוכה"}],"summary":"","topOpportunity":"","lastChecked":"${t}"}` }
+  ];
+}
+
+function Item({ item, s }) {
+  return <div style={{border:`1px solid ${s.border}`,borderRadius:10,padding:"12px 14px",background:"#fafcff",marginBottom:10}}>
+    {Object.entries(item).filter(([k])=>k!=="url"&&item[k]).map(([k,v])=>(
+      <div key={k} style={{display:"flex",gap:8,fontSize:13,marginBottom:5}}>
+        <span style={{color:"#999",minWidth:115,flexShrink:0}}>{LBL[k]||k}:</span>
+        <span style={{fontWeight:["title","topic","ministry","company"].includes(k)?700:400,color:k==="urgency"&&v==="גבוהה"?"#c62828":k==="amount"?"#1b5e20":"#111"}}>{String(v)}</span>
+      </div>
+    ))}
+    {item.url&&<a href={item.url} target="_blank" rel="noopener noreferrer" style={{color:s.color,fontSize:12,display:"block",marginTop:4}}>🔗 פתח קישור</a>}
+  </div>;
+}
+
+function Card({ s, onScan, result, loading, hasKey }) {
+  return <div style={{background:s.bg,border:`2px solid ${s.border}`,borderRadius:16,padding:22,direction:"rtl",marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10,marginBottom:14}}>
+      <div>
+        <div style={{fontSize:26}}>{s.emoji}</div>
+        <h2 style={{margin:"4px 0 2px",color:s.color,fontSize:17,fontWeight:800}}>{s.title}</h2>
+        <p style={{margin:0,color:"#666",fontSize:12}}>{s.subtitle}</p>
+      </div>
+      <button onClick={()=>onScan(s)} disabled={loading||!hasKey} style={{background:loading?"#bbb":!hasKey?"#ddd":s.color,color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontSize:14,fontWeight:700,cursor:loading||!hasKey?"not-allowed":"pointer"}}>
+        {loading?"⏳ סורק...":"🔍 סרוק"}
+      </button>
+    </div>
+    {loading&&<div style={{background:"rgba(255,255,255,0.7)",borderRadius:10,padding:16,textAlign:"center",color:s.color}}>🤖 Claude AI מחפש ברשת...</div>}
+    {!loading&&result&&<div style={{background:"#fff",borderRadius:10,padding:16,border:`1px solid ${s.border}`,maxHeight:480,overflowY:"auto"}}>
+      {result.error?<p style={{color:"#c62828",margin:0}}>⚠️ {result.error}</p>:<>
+        {result.summary&&<div style={{background:s.bg,borderRadius:8,padding:"8px 14px",marginBottom:12,fontSize:14,color:s.color,fontWeight:700,borderRight:`4px solid ${s.border}`}}>{result.summary}</div>}
+        {result.topOpportunity&&<div style={{background:"#fff8e1",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:13,color:"#e65100",fontWeight:700,border:"1px solid #ffc107"}}>⭐ הזדמנות: {result.topOpportunity}</div>}
+        {result.totalAmount&&<div style={{color:"#b71c1c",fontWeight:700,fontSize:14,marginBottom:10}}>💰 סך: {result.totalAmount}</div>}
+        {(result.results||[]).length===0?<p style={{color:"#aaa",textAlign:"center",padding:12}}>לא נמצאו תוצאות</p>:(result.results||[]).map((item,i)=><Item key={i} item={item} s={s}/>)}
+        <p style={{color:"#ccc",fontSize:11,margin:"4px 0 0",textAlign:"left"}}>עודכן: {result.lastChecked}</p>
+      </>}
+    </div>}
+    {!loading&&!result&&<div style={{background:"rgba(255,255,255,0.55)",borderRadius:10,padding:18,textAlign:"center",color:"#aaa",fontSize:13,border:`1px dashed ${s.border}`}}>{hasKey?'לחץ "סרוק" לקבלת נתונים עדכניים מהרשת':'הזן מפתח API כדי להתחיל'}</div>}
+  </div>;
+}
+
+function App() {
+  const [apiKey, setApiKey] = useState(localStorage.getItem("anthropic_key")||"");
+  const [keyInput, setKeyInput] = useState("");
+  const [showKeyForm, setShowKeyForm] = useState(!localStorage.getItem("anthropic_key"));
+  const [results, setResults] = useState({});
+  const [loading, setLoading] = useState({});
+  const sections = mkSections();
+
+  const saveKey = () => {
+    if(keyInput.startsWith("sk-ant-")) {
+      localStorage.setItem("anthropic_key", keyInput);
+      setApiKey(keyInput);
+      setShowKeyForm(false);
+    } else {
+      alert("מפתח לא תקין — חייב להתחיל ב-sk-ant-");
+    }
+  };
+
+  const scan = useCallback(async (s) => {
+    const key = localStorage.getItem("anthropic_key");
+    if(!key) return;
+    setLoading(p=>({...p,[s.id]:true}));
+    try{
+      const res = await fetch(API, {method:"POST", headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01"}, body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:s.prompt}]})});
+      const data = await res.json();
+      const text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+      let parsed;
+      try{const m=text.match(/\{[\s\S]*\}/);parsed=m?JSON.parse(m[0]):{summary:text,results:[]};}catch{parsed={summary:text||"שגיאה",results:[]};}
+      setResults(p=>({...p,[s.id]:parsed}));
+    }catch(e){setResults(p=>({...p,[s.id]:{error:`שגיאה: ${e.message}`,results:[]}}));}
+    finally{setLoading(p=>({...p,[s.id]:false}));}
+  },[]);
+
+  const scanAll = () => sections.forEach(s=>scan(s));
+  const anyLoading = Object.values(loading).some(Boolean);
+
+  return <div style={{minHeight:"100vh",background:"linear-gradient(155deg,#0a1352 0%,#1565c0 100%)",padding:"16px 14px",fontFamily:"Arial,sans-serif",direction:"rtl"}}>
+    <div style={{background:"#fff",borderRadius:18,padding:"18px 24px",marginBottom:16,boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,marginBottom: showKeyForm?16:0}}>
+        <div>
+          <h1 style={{margin:0,color:"#0a1352",fontSize:22,fontWeight:900}}>⚖️ מוקד מודיעין משפטי</h1>
+          <p style={{margin:"3px 0 0",color:"#555",fontSize:13}}>יוסף ששי — עורכי דין | AI + חיפוש אינטרנט חי</p>
+          <p style={{margin:"2px 0 0",color:"#aaa",fontSize:11}}>📅 {new Date().toLocaleDateString("he-IL",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {apiKey&&<button onClick={()=>setShowKeyForm(!showKeyForm)} style={{background:"#f5f5f5",color:"#555",border:"1px solid #ddd",borderRadius:8,padding:"8px 14px",fontSize:12,cursor:"pointer"}}>🔑 {showKeyForm?"סגור":"שנה מפתח"}</button>}
+          <button onClick={scanAll} disabled={anyLoading||!apiKey} style={{background:anyLoading||!apiKey?"#ccc":"linear-gradient(135deg,#0a1352,#1565c0)",color:"#fff",border:"none",borderRadius:12,padding:"12px 22px",fontSize:14,fontWeight:700,cursor:anyLoading||!apiKey?"not-allowed":"pointer",boxShadow:anyLoading||!apiKey?"none":"0 4px 16px rgba(10,19,82,0.4)"}}>
+            {anyLoading?"⏳ סורק...":"🚀 סרוק את הכל"}
+          </button>
+        </div>
+      </div>
+      {showKeyForm&&<div style={{background:"#f0f4ff",borderRadius:12,padding:16,border:"1px solid #c5cae9"}}>
+        <p style={{margin:"0 0 10px",color:"#1a237e",fontWeight:700,fontSize:14}}>🔑 הזן מפתח Anthropic API</p>
+        <p style={{margin:"0 0 10px",color:"#666",fontSize:12}}>המפתח נשמר רק במכשיר שלך ולא נשלח לשום מקום אחר.<br/>קבל מפתח בחינם: <a href="https://console.anthropic.com" target="_blank" style={{color:"#1a237e"}}>console.anthropic.com</a></p>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <input value={keyInput} onChange={e=>setKeyInput(e.target.value)} placeholder="sk-ant-..." style={{flex:1,minWidth:200,padding:"10px 14px",borderRadius:8,border:"1px solid #c5cae9",fontSize:13,direction:"ltr"}} type="password"/>
+          <button onClick={saveKey} style={{background:"#1a237e",color:"#fff",border:"none",borderRadius:8,padding:"10px 20px",fontSize:14,fontWeight:700,cursor:"pointer"}}>שמור ✓</button>
+        </div>
+      </div>}
+    </div>
+    <div style={{background:"rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 16px",marginBottom:14,color:"#c8e6ff",fontSize:12}}>
+      💡 כל לחיצה שולחת Claude AI לחפש ברשת בזמן אמת — ממקורות ממשלתיים, תקשורתיים ואתרי משפט ישראלים.
+    </div>
+    {sections.map(s=><Card key={s.id} s={s} onScan={scan} result={results[s.id]} loading={!!loading[s.id]} hasKey={!!apiKey}/>)}
+    <div style={{background:"rgba(255,255,255,0.08)",borderRadius:14,padding:14,marginTop:4,color:"#c8e6ff"}}>
+      <p style={{margin:"0 0 8px",fontWeight:700,fontSize:13}}>🔗 קישורים לבדיקה ידנית</p>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        {[["מינהל הרכש","https://mr.gov.il/ilgstorefront/he/search/?text=ייעוץ+משפטי&s=TENDER"],['נמ"ר',"https://namerz.moin.gov.il/namer"],["GOVO","https://govi.co.il/authorities"],['רשות ני"ע',"https://www.isa.gov.il"],["רשות התחרות","https://www.gov.il/he/departments/competition_authority"],["מועצה לצרכנות","https://www.consumers.org.il"],['מש"מ',"https://www.masham.org.il/bids/"]].map(([n,u])=>(
+          <a key={n} href={u} target="_blank" rel="noopener noreferrer" style={{background:"rgba(255,255,255,0.15)",color:"#c8e6ff",padding:"6px 12px",borderRadius:8,textDecoration:"none",fontSize:12,border:"1px solid rgba(255,255,255,0.2)"}}>{n} ↗</a>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
